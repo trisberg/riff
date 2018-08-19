@@ -19,6 +19,7 @@ package core
 import (
 	build "github.com/knative/build/pkg/apis/build/v1alpha1"
 	"github.com/knative/serving/pkg/apis/serving/v1alpha1"
+	"k8s.io/api/core/v1"
 )
 
 type CreateFunctionOptions struct {
@@ -30,6 +31,8 @@ type CreateFunctionOptions struct {
 	InvokerURL string
 	Handler    string
 	Artifact   string
+
+	Buildpack   string
 }
 
 func (c *client) CreateFunction(options CreateFunctionOptions) (*v1alpha1.Service, error) {
@@ -40,24 +43,46 @@ func (c *client) CreateFunction(options CreateFunctionOptions) (*v1alpha1.Servic
 		return nil, err
 	}
 
-	s.Spec.RunLatest.Configuration.Build = &build.BuildSpec{
-		ServiceAccountName: "riff-build",
-		Source: &build.SourceSpec{
-			Git: &build.GitSourceSpec{
-				Url:      options.GitRepo,
-				Revision: options.GitRevision,
+	if options.Buildpack == "" {
+		s.Spec.RunLatest.Configuration.Build = &build.BuildSpec{
+			ServiceAccountName: "riff-build",
+			Source: &build.SourceSpec{
+				Git: &build.GitSourceSpec{
+					Url:      options.GitRepo,
+					Revision: options.GitRevision,
+				},
 			},
-		},
-		Template: &build.TemplateInstantiationSpec{
-			Name: "riff",
-			Arguments: []build.ArgumentSpec{
-				{Name: "IMAGE", Value: options.Image},
-				{Name: "INVOKER_PATH", Value: options.InvokerURL},
-				{Name: "FUNCTION_ARTIFACT", Value: options.Artifact},
-				{Name: "FUNCTION_HANDLER", Value: options.Handler},
-				{Name: "FUNCTION_NAME", Value: options.Name},
+			Template: &build.TemplateInstantiationSpec{
+				Name: "riff",
+				Arguments: []build.ArgumentSpec{
+					{Name: "IMAGE", Value: options.Image},
+					{Name: "INVOKER_PATH", Value: options.InvokerURL},
+					{Name: "FUNCTION_ARTIFACT", Value: options.Artifact},
+					{Name: "FUNCTION_HANDLER", Value: options.Handler},
+					{Name: "FUNCTION_NAME", Value: options.Name},
+				},
 			},
-		},
+		}
+	} else {
+		s.Spec.RunLatest.Configuration.Build = &build.BuildSpec{
+			ServiceAccountName: "riff-build",
+			Source: &build.SourceSpec{
+				Git: &build.GitSourceSpec{
+					Url:      options.GitRepo,
+					Revision: options.GitRevision,
+				},
+			},
+			Template: &build.TemplateInstantiationSpec{
+				Name: "buildpack",
+				Arguments: []build.ArgumentSpec{
+					{Name: "IMAGE", Value: options.Image},
+					{Name: "BUILDPACK_ORDER", Value: options.Buildpack},
+					{Name: "SKIP_DETECT", Value: "true"},
+				},
+			},
+		}
+		s.Spec.RunLatest.Configuration.RevisionTemplate.Spec.Container.Env =
+			[]v1.EnvVar{{Name: "FUNCTION_HANDLER", Value: options.Handler}}
 	}
 
 	if !options.DryRun {

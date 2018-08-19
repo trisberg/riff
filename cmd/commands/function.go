@@ -47,6 +47,8 @@ func FunctionCreate(fcTool *core.Client) *cobra.Command {
 		"command": "https://github.com/projectriff/command-function-invoker/raw/v0.0.7/command-invoker.yaml",
 		"java":    "https://github.com/projectriff/java-function-invoker/raw/v0.0.7/java-invoker.yaml",
 		"node":    "https://github.com/projectriff/node-function-invoker/raw/v0.0.8/node-invoker.yaml",
+		"maven":   "https://github.com/trisberg/java-function-invoker/raw/build/java-mvn-invoker.yaml",
+		"gradle":  "https://github.com/trisberg/java-function-invoker/raw/build/java-gradle-invoker.yaml",
 	}
 
 	command := &cobra.Command{
@@ -79,9 +81,24 @@ From then on you can use the sub-commands for the 'service' command to interact 
 
 			fnName := args[functionCreateFunctionNameIndex]
 			invoker := args[functionCreateInvokerIndex]
-			invokerURL, exists := invokers[invoker]
-			if !exists {
-				return fmt.Errorf("unknown invoker: %s", invoker)
+			var invokerURL string
+			var exists bool
+
+			if createFunctionOptions.Buildpack == "" {
+				if invoker == "java" {
+					if createFunctionOptions.Artifact == "pom.xml" {
+						invokerURL, exists = invokers["maven"]
+					} else if createFunctionOptions.Artifact == "build.gradle" {
+						invokerURL, exists = invokers["gradle"]
+					} else {
+						invokerURL, exists = invokers[invoker]
+					}
+				} else {
+					invokerURL, exists = invokers[invoker]
+				}
+				if !exists {
+					return fmt.Errorf("unknown invoker: %s", invoker)
+				}
 			}
 
 			createFunctionOptions.Name = fnName
@@ -167,10 +184,12 @@ From then on you can use the sub-commands for the 'service' command to interact 
 	command.MarkFlagRequired("git-repo")
 	command.Flags().StringVar(&createFunctionOptions.GitRevision, "git-revision", "master", "the git `ref-spec` of the function code to use")
 	command.Flags().StringVar(&createFunctionOptions.Handler, "handler", "", "the name of the `method or class` to invoke, depending on the invoker used")
-	command.Flags().StringVar(&createFunctionOptions.Artifact, "artifact", "", "`path` to the function source code or jar file; auto-detected if not specified")
+	command.Flags().StringVar(&createFunctionOptions.Artifact, "artifact", "", "`path` to the function source code; for Java it can be path to jar file, Maven pom.xml or Gradle build.gradle")
 
 	command.Flags().StringArrayVar(&createFunctionOptions.Env, "env", []string{}, envUsage)
 	command.Flags().StringArrayVar(&createFunctionOptions.EnvFrom, "env-from", []string{}, envFromUsage)
+
+	command.Flags().StringVar(&createFunctionOptions.Buildpack, "buildpack", "", "the URL for the buildpack to use")
 
 	return command
 }
